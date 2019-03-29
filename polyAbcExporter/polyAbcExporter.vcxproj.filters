@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="polyExporter.cpp" />
+    <ClCompile Include="polyWriter.cpp" />
+    <ClCompile Include="polyAbcExporter.cpp" />
+    <ClCompile Include="polyAbcWriter.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="polyExporter.h" />
+    <ClInclude Include="polyWriter.h" />
+    <ClInclude Include="polyAbcExporter.h" />
+    <ClInclude Include="polyAbcWriter.h" />
+    <ClInclude Include="AbcExportInterface.h" />
+  </ItemGroup>
+</Project>

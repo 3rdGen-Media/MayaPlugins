@@ -1,0 +1,49 @@
+﻿Building Maya Win32 Alembic Plugin
+
+0.  Install CMAKE 3.11+
+
+	a.  The newer CMAKE gui does not seem to allow choosing x64 VS compiler explicitly, so I 	    had to use cmake from the command line.
+
+1.  Build ILMBase Dependency w/ CMAKE
+
+	a.  CMAKE builds are not correct for version 2.3.0, must use 2.2.0 on Windows.
+	b.  Run this commmand in a build directory to build build VS ILMBase project:
+
+		cd %ILM_BUILD_DIR%
+		cmake -G"Visual Studio 14 2015 Win64" -H%ILM_SOURCE_DIR%
+
+	c.  Open ilmbase.sln in build dir and compile ALL_BUILD project then INSTALL project.  This 	    will install to C:\Program Files\ilmbase
+	d.  Set a System env var such as %ILMBASE_PATH% and add %ILMBASE_PATH%\lib to your path.
+
+2.  Build Alembic SDK Dependency w/ CMAKE
+
+	a.  Run this commmand in a build directory to build build VS ILMBase project:
+
+		cd %ABC_BUILD_DIR%
+		cmake -G"Visual Studio 14 2015 Win64" -D ILMBASE_ROOT=%ILMBASE_PATH% -H%ALEMBIC_SOURCE_DIR%
+
+	c.  Open ilmbase.sln in build dir and compile ALL_BUILD project then INSTALL project.  This 	    will install to C:\Program Files\ilmbase
+	d.  Set a System env var such as %ALEMBIC_DIR% and add %ALEMBIC_DIR%\bin to your path.
+
+3.  Prepare Maya VS Plugin Project:
+
+	a.  Set a System env var such as %MAYA_DIR% and add %MAYA_DIR%\bin to your path.  Ensure 	 	    this comes before any other Qt Dependencies in path.	
+
+	b.  Add the following include directories to your Maya Plugin VS project:
+
+	    $(MAYA_PATH)\include
+	    $(ILMBASE_PATH)\include
+	    $(ALEMBIC_PATH)\include
+
+	c.  Add the following linker directories to your Maya Plugin VS project:
+
+		OpenMaya.lib
+		Foundation.lib
+		Imath-2_2.lib
+		Half.lib
+		Iex-2_2.lib
+		Alembic.lib
+		
+
+	d.  
+		
