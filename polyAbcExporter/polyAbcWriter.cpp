@@ -157,10 +157,10 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 	//unsigned int numFaceVertIndices = fIndexArra
 	unsigned int numFaces = fMesh->numPolygons();
-	unsigned faceIndex, j;// numVertsInFace, numFaceVertIndices;
+	unsigned faceIndex;// numVertsInFace, numFaceVertIndices;
 
 	int numVertsInFace, numFaceVertIndices;
-	j = numVertsInFace = numFaceVertIndices = 0;
+	int j = numVertsInFace = numFaceVertIndices = 0;
 
 	MStatus status;
 	MIntArray indexArray;
@@ -194,9 +194,12 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	int normalIndex = 0;
 
 
+
 	std::vector<float> perFaceVertexNormals;
 	std::vector<uint32_t> perFaceVertexNormalIndices;
 	uint32_t perFaceVertexNormalIndex = 0;
+
+	int tmpFaceIndices[256];
 
 	//iterate over each polygon to get the index values
 	for (faceIndex = 0; faceIndex < numFaces; faceIndex++) {
@@ -207,26 +210,33 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 			return MStatus::kFailure;
 		}
 		//read array of vertex indices for the current face
-		indexArray.get( &(faceVertIndices[vertIndex]) );
+		//indexArray.get( &(faceVertIndices[vertIndex]) );
+		indexArray.get(&(tmpFaceIndices[0]));
 
 
-		
 		status = fMesh->getFaceNormalIds(faceIndex, normalIndexArray);
 		if (MStatus::kFailure == status) {
 			MGlobal::displayError("MFnMesh::getFaceNormalIds");
 			return MStatus::kFailure;
 		}
+
 		//read array of normal indices for the current face
 		normalIndexArray.get( &(faceNormalIndices[normalIndex]) );
 		normalIndex += normalIndexArray.length();
-
 		if (normalIndexArray.length() != indexArray.length())
 			printf("\nnormalIndexArray(%d) != indexArray(%d)\n", normalIndexArray.length(), indexArray.length());
-		
 
+
+		char buf[256];
+		_itoa_s(indexArray.length(), buf, 10);
+		MString lengthStr = MString(buf);
+
+		MGlobal::displayInfo("Hello I am here length = " + lengthStr);
 		
 		//iterate over each vert in the face
-		for (j = 0; j < indexArray.length(); j++) {
+		int faceVertIndex = 0;
+		for (j = indexArray.length()-1; j>-1; j--) 
+		{
 			/*
 			status = fMesh->getFaceVertexColorIndex(i, j, colorIndex);
 
@@ -240,10 +250,17 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 			}
 			*/
 
+
+
+			MGlobal::displayInfo("Hello WTF");
+
+			faceVertIndices[vertIndex + faceVertIndex] = tmpFaceIndices[j];
+
 			//int perFaceVertIndex = faceVertIndices[vertIndex + j];
-			perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[j]].x);
-			perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[j]].y);
-			perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[j]].z);
+			//perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[faceVertIndex]].x);
+			//perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[faceVertIndex]].y);
+			//perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[faceVertIndex]].z);
+			faceVertIndex++;
 			//perFaceVertexNormalIndices.push_back(perFaceVertexNormalIndex++);
 		}
 
@@ -252,6 +269,9 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	}
 
 	//populate a uv array
+
+	MIntArray uvCounts;
+	MIntArray uvIds;
 
 	UVSet* currUVSet;
 	float * floatUVs = NULL;
@@ -273,16 +293,28 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				floatUVs[uvIndex*2] = currUVSet->uArray[uvIndex];
 				floatUVs[uvIndex*2+1] = currUVSet->vArray[uvIndex];
 			}
+
+			fMesh->getAssignedUVs(uvCounts, uvIds, &fCurrentUVSetName);
 		}
 
 		//Display the uv set for the loop iteration for debugging
 		MGlobal::displayInfo("UV Set:  " + currUVSet->name  + "\n");
 	}
 	
+
+
 	Alembic::AbcGeom::OV2fGeomParam::Sample uvsamp;
-	if( floatUVs )
-		uvsamp = Alembic::AbcGeom::OV2fGeomParam::Sample(Alembic::Abc::V2fArraySample((const Alembic::Abc::V2f*)floatUVs, uvCount), Alembic::AbcGeom::kVertexScope);
-	
+	if (floatUVs)
+	{
+
+		int* uvIndices = (int32_t*)alloca(uvIds.length() * sizeof(int32_t));
+		uvIds.get(&(uvIndices[0]));
+
+		uvsamp = Alembic::AbcGeom::OV2fGeomParam::Sample(Alembic::Abc::V2fArraySample((const Alembic::Abc::V2f*)floatUVs, uvCount), Alembic::AbcGeom::kFacevaryingScope);
+		Alembic::Abc::UInt32ArraySample uvIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(uvIndices[0]), uvIds.length()));
+		uvsamp.setIndices(uvIndexSamp);
+
+	}
 	//get the length maya normal array
 	unsigned int normalCount = fNormalArray.length();
 	if (0 == normalCount) {
@@ -291,15 +323,17 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	}
 
 	//convert maya normal array to interleaved float array
-	/*	float * floatNorms = (float*)alloca(sizeof(float) * 3 * normalCount);
+	float * floatNorms = (float*)alloca(sizeof(float) * 3 * normalCount);
 	//unsigned int normalIndex;
 	for (normalIndex = 0; normalIndex < (int)normalCount; normalIndex++) {
-		floatNorms[normalIndex*3] =		fNormalArray[normalIndex].x;
-		floatNorms[normalIndex*3+1] =	fNormalArray[normalIndex].y;
-		floatNorms[normalIndex*3+2] =	fNormalArray[normalIndex].z;
+		floatNorms[normalIndex*3] =			fNormalArray[normalIndex].x;
+		floatNorms[normalIndex*3+1] =		fNormalArray[normalIndex].y;
+		floatNorms[normalIndex*3+2] =		fNormalArray[normalIndex].z;
 	}
-	*/
-	Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample(NULL, 0), Alembic::AbcGeom::kVertexScope);
+	
+	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample(NULL, 0), Alembic::AbcGeom::kVertexScope);
+	Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(floatNorms[0]), normalCount), Alembic::AbcGeom::kFacevaryingScope);
+	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(perFaceVertexNormals[0]), perFaceVertexNormals.size() / 3), Alembic::AbcGeom::kVertexScope);
 	//Alembic::Abc::UInt32ArraySample nIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(perFaceVertexNormalIndices[0]), perFaceVertexNormalIndices.size()));
 	//nsamp.setIndices(nIndexSamp);
 
@@ -322,15 +356,18 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	//now output facet texture mapping sets
 
 	//buf = "\0";
-	Alembic::Abc::N3fArraySample normals = mesh_sample.getNormals().getVals();
+	//Alembic::Abc::N3fArraySample normals = mesh_sample.getNormals().getVals();
 	
-	_itoa_s(normals.size(), buf, 10);
-	MString normalsSizeStr = MString(buf);
-	MGlobal::displayInfo("meshSchema.numSamples = " + normalsSizeStr);
+	//_itoa_s(normals.size(), buf, 10);
+	//MString normalsSizeStr = MString(buf);
+	//MGlobal::displayInfo("meshSchema.numSamples = " + normalsSizeStr);
 
 	//if there is more than one set, the last set simply consists of all 
 	//polygons, so we won't include it
-	//
+	//\
+
+
+	/*
 	unsigned int setCount = fPolygonSets.length();
 	if (setCount > 1) {
 		//setCount--;
@@ -760,10 +797,13 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 			
 		}
-		MGlobal::displayInfo("writeGeometryToArchiveEnd");
+		
 
 
 	}
+	*/
+
+	MGlobal::displayInfo("writeGeometryToArchiveEnd");
 
 	//TO DO:  set geom bounds
 	//Alembic::Abc::Box3d cbox;
