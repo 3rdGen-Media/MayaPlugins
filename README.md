@@ -6,4 +6,4 @@ Currently, the only posted Maya Plugin is an Alembic Export Plugin.  Motivations
 
 2.   To provide a path for utilizing Alembic as a complete standalone renderable asset format:
      - To extend the Maya Alembic output functionality to include per-mesh material set groupings as well as arbitrarily defined Face Set groupings
-     - To extend current Maya Alembic output functionality to make use of the new(ish) AbcMaterial API, populated with Data from Maya hypershade objects  
+     - To extend current Maya Alembic output functionality to make use of the new(ish) AbcMaterial API, populated with hypershade material object attributes
