@@ -119,64 +119,83 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 //Returns:  MStatus::kSuccess if the method succeeds
 //			MStatus::kFailure if the method fails
 {
-	MGlobal::displayInfo("polyAbcWriter::writeGeometryToArchive");
-	printf("polyAbcWriter::writeGeometryToArchive\n");
+	MStatus status;
 
+	//Debugging Output
+	MGlobal::displayInfo("polyAbcWriter::writeGeometryToArchive");
+	//printf("polyAbcWriter::writeGeometryToArchive\n");
 	MGlobal::displayInfo("fMesh->fullPathName = " + fMesh->fullPathName() );
 	MGlobal::displayInfo("fMesh->partialPathName = " + fMesh->partialPathName());
 
 	//Create a PolyMesh ABC Object (Schema) as Child of the Xform Input Object
 	Alembic::AbcGeom::OPolyMesh meshObj(xformObj, fMesh->partialPathName().asUTF8());
 	Alembic::AbcGeom::OPolyMeshSchema &meshSchema = meshObj.getSchema();
-	/*
-	if (MStatus::kFailure == outputFaces(os)) {
-		return MStatus::kFailure;
-	}
-	*/
 
-	//we will need to prepare the following for a call to OPolyMeshSchema::Sample
+	//we will need to prepare the following for a call to AbcGeom::OPolyMeshSchema::Sample
 	//(i.e. to write the minimum spec geometry cache information)
 	// 1)  floating point interleaved vertex array + size of array
 	// 2)  floating point interleaved normal array + size of array
 	// 3)  floating point interleaved uv array + size of array
-	// 4)  
+	// 4)  Per Face Polygon Data:
+	//		i)	  unsigned int per face vertex count array
+	//		ii)	  unsigned int per face vertex index array (with proper winding order considerations)
+	//		iii)  unsigned int per face uv index array + size of array
 
+	//1)  Populate mesh interleaved floating point X,Y,Z vertex array
 	unsigned int vertexCount = fVertexArray.length();
 	float * floatVerts = (float*)alloca(sizeof(float) * 3 * vertexCount);
-	//fMesh->getRawPoints();
-	unsigned vertexIndex;
 	if (0 == vertexCount) {
 		return MStatus::kFailure;
 	}
-	for (vertexIndex = 0; vertexIndex< vertexCount; vertexIndex++) {
+	for (unsigned vertexIndex = 0; vertexIndex< vertexCount; vertexIndex++) {
 		floatVerts[vertexIndex*3] =		(float)fVertexArray[vertexIndex].x;
 		floatVerts[vertexIndex*3+1] =	(float)fVertexArray[vertexIndex].y;
 		floatVerts[vertexIndex*3+2] =	(float)fVertexArray[vertexIndex].z;
-		//alembic does not store w
 	}
 
-	//unsigned int numFaceVertIndices = fIndexArra
+	//2)  Populate mesh floating point interleaved normal array + size of array
+
+	//Get the length of maya mesh normal array
+	unsigned int normalCount = fNormalArray.length();
+	if (0 == normalCount) {
+		MGlobal::displayInfo("Error:  No Normals");
+		return MStatus::kFailure;
+	}
+
+	//convert maya normal array to interleaved float array
+	float * floatNorms = (float*)alloca(sizeof(float) * 3 * normalCount);
+	//unsigned int normalIndex;
+	for (int normalIndex = 0; normalIndex < (int)normalCount; normalIndex++) {
+		floatNorms[normalIndex * 3] = fNormalArray[normalIndex].x;
+		floatNorms[normalIndex * 3 + 1] = fNormalArray[normalIndex].y;
+		floatNorms[normalIndex * 3 + 2] = fNormalArray[normalIndex].z;
+	}
+
+	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample(NULL, 0), Alembic::AbcGeom::kVertexScope);
+	Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(floatNorms[0]), normalCount), Alembic::AbcGeom::kFacevaryingScope);
+	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(perFaceVertexNormals[0]), perFaceVertexNormals.size() / 3), Alembic::AbcGeom::kVertexScope);
+	//Alembic::Abc::UInt32ArraySample nIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(perFaceVertexNormalIndices[0]), perFaceVertexNormalIndices.size()));
+	//nsamp.setIndices(nIndexSamp);
+
+	//char buf[256];
+	//_itoa_s(perFaceVertexNormals.size() / 3, buf, 10);
+	//MString intStr = MString(buf);
+	//MGlobal::displayInfo("perFaceVertexNormals.size = " + intStr);
+
+
+	//4.i)  Populate unsigned int per face vertex count array
+
+	//Allocate an array to store num verts per polygon
 	unsigned int numFaces = fMesh->numPolygons();
-	unsigned faceIndex;// numVertsInFace, numFaceVertIndices;
-
-	int numVertsInFace, numFaceVertIndices;
-	int j = numVertsInFace = numFaceVertIndices = 0;
-
-	MStatus status;
-	MIntArray indexArray;
-
-	MIntArray normalIndexArray;
-	//int colorIndex, uvID;
-
-	//allocate an array to store verts per polygon
 	int * numVertsPerFace = (int*)alloca(numFaces * sizeof(uint32_t));
-	//int * vertsPerFaceIterator= (int*)alloca(numFaces * sizeof(uint32_t));
+	//Define a variable to store total number of per face vertex indices
+	int numFaceVertIndices = 0;
 
-	//iterate over each polygon to get num total indices
-	for (faceIndex = 0; faceIndex < numFaces; faceIndex++) {
-
+	//Iterate over each polygon to populate per face vertex count array and count the total number of indices
+	for (unsigned faceIndex = 0; faceIndex < numFaces; faceIndex++) 
+	{
 		//get num indices in each face
-		numVertsInFace = (int)fMesh->polygonVertexCount(faceIndex, &status);
+		int numVertsInFace = (int)fMesh->polygonVertexCount(faceIndex, &status);
 		*(&(numVertsPerFace[faceIndex])) = numVertsInFace;
 
 		//sum total vertices of all faces
@@ -187,33 +206,37 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		}
 	}
 
-	//allocate an array to store the vertex indices for each face
+	//4.ii)  Populate an array to store the vertex indices for each face
+
+	//Allocate an array to store per face vertex indices for all faces
 	int * faceVertIndices = (int*)alloca(numFaceVertIndices * sizeof(int));
-	int * faceNormalIndices = (int*)alloca(numFaceVertIndices * sizeof(int));
-	int vertIndex = 0;
-	int normalIndex = 0;
-
-
-
-	std::vector<float> perFaceVertexNormals;
-	std::vector<uint32_t> perFaceVertexNormalIndices;
-	uint32_t perFaceVertexNormalIndex = 0;
-
 	int tmpFaceIndices[256];
 
-	//iterate over each polygon to get the index values
-	for (faceIndex = 0; faceIndex < numFaces; faceIndex++) {
+	//Define variables to use in for loop
+	int faceVertIndex = 0;
+	MIntArray perFaceVertIndexArray;
 
-		status = fMesh->getPolygonVertices(faceIndex, indexArray);
+	//int * faceNormalIndices = (int*)alloca(numFaceVertIndices * sizeof(int));
+	//int normalIndex = 0;
+	//std::vector<float> perFaceVertexNormals;
+	//std::vector<uint32_t> perFaceVertexNormalIndices;
+	//uint32_t perFaceVertexNormalIndex = 0;
+
+	//Iterate over each polygon again to populate per face vertex count array(with proper winding order considerations)
+	for (unsigned faceIndex = 0; faceIndex < numFaces; faceIndex++) {
+
+		//Get a temporary array containing the indices into the vertex array list for each face in the mesh
+		status = fMesh->getPolygonVertices(faceIndex, perFaceVertIndexArray);
 		if (MStatus::kFailure == status) {
 			MGlobal::displayError("MFnMesh::getPolygonVertices");
 			return MStatus::kFailure;
 		}
 		//read array of vertex indices for the current face
 		//indexArray.get( &(faceVertIndices[vertIndex]) );
-		indexArray.get(&(tmpFaceIndices[0]));
+		perFaceVertIndexArray.get(&(tmpFaceIndices[0]));
 
-
+		//Access per face normals if desired
+		/*
 		status = fMesh->getFaceNormalIds(faceIndex, normalIndexArray);
 		if (MStatus::kFailure == status) {
 			MGlobal::displayError("MFnMesh::getFaceNormalIds");
@@ -225,18 +248,21 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		normalIndex += normalIndexArray.length();
 		if (normalIndexArray.length() != indexArray.length())
 			printf("\nnormalIndexArray(%d) != indexArray(%d)\n", normalIndexArray.length(), indexArray.length());
+		*/
 
-
+		/*
 		char buf[256];
 		_itoa_s(indexArray.length(), buf, 10);
 		MString lengthStr = MString(buf);
+		MGlobal::displayInfo("Face Index Array Length = " + lengthStr);
+		*/
 
-		MGlobal::displayInfo("Hello I am here length = " + lengthStr);
-		
-		//iterate over each vert in the face
-		int faceVertIndex = 0;
-		for (j = indexArray.length()-1; j>-1; j--) 
+		//Iterate over each vert in the face to populate the array of face vertex indices
+		//while reversing the winding order for the face's vertices if necessary for our rendering software
+		int faceVertCount = 0;
+		for (int j = perFaceVertIndexArray.length()-1; j>-1; j--)
 		{
+			//Access the faces individual UV data if desired
 			/*
 			status = fMesh->getFaceVertexColorIndex(i, j, colorIndex);
 
@@ -249,44 +275,46 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				}
 			}
 			*/
+			
+			//Alembic interchange formats require front facing polygons to be in clockwise (aka left-handed) vertex order,
+			//while Maya and most, if not all, other tools  use counter-clockwise (right-handed) vertex order, so we need to reverse the winding order
+			//when writing to and reading from and Alembic Archive
+			faceVertIndices[faceVertIndex + faceVertCount] = tmpFaceIndices[j];
 
-
-
-			MGlobal::displayInfo("Hello WTF");
-
-			faceVertIndices[vertIndex + faceVertIndex] = tmpFaceIndices[j];
-
-			//int perFaceVertIndex = faceVertIndices[vertIndex + j];
+			//Populate per vertex normal data if desired
+			//int perFaceVertIndex = faceVertIndices[vertIndex + j];			
+			//custom populate a vertex normal array if a different order from Maya is needed-
 			//perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[faceVertIndex]].x);
 			//perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[faceVertIndex]].y);
 			//perFaceVertexNormals.push_back(fNormalArray[normalIndexArray[faceVertIndex]].z);
-			faceVertIndex++;
-			//perFaceVertexNormalIndices.push_back(perFaceVertexNormalIndex++);
+
+			faceVertCount++;
 		}
 
-		vertIndex += indexArray.length();
-		
+		//increment our per face vertIndex placeholder
+		faceVertIndex += perFaceVertIndexArray.length();
 	}
 
-	//populate a uv array
-
+	//3)		Populate a floating point interleaved uv array + size of array
 	MIntArray uvCounts;
 	MIntArray uvIds;
-
 	UVSet* currUVSet;
 	float * floatUVs = NULL;
 	unsigned int uvIndex, uvCount;
+	
+	//Iterate over all UV sets until we find the current set associated with this mesh
 	for (currUVSet = fHeadUVSet; currUVSet != NULL; currUVSet = currUVSet->next) {
 		if (currUVSet->name == fCurrentUVSetName) {
 
-			//if we match the current uv set associated with the geometry...
+			//If we match the current uv set associated with the geometry...
 			MGlobal::displayInfo("Current ");
 			meshSchema.setUVSourceName(fCurrentUVSetName.asUTF8());
 
-			//get the uv set element count
+			//Get the uv set element count
 			uvCount = currUVSet->uArray.length();
 
-			//convert maya u and v arrays to an interleaved float array
+			//Allocate memory for an interleaved floating point uv array
+			//and convert maya u and v arrays to an interleaved float array
 			floatUVs = (float*)alloca(sizeof(float) * 2 * uvCount);
 			for (uvIndex = 0; uvIndex < uvCount; uvIndex++)
 			{
@@ -294,6 +322,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				floatUVs[uvIndex*2+1] = currUVSet->vArray[uvIndex];
 			}
 
+			//4.iii) Populate unsigned int per face uv index array + size of array
 			fMesh->getAssignedUVs(uvCounts, uvIds, &fCurrentUVSetName);
 		}
 
@@ -302,11 +331,10 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	}
 	
 
-
+	//Create an AbcGeom UV Sample Object Container
 	Alembic::AbcGeom::OV2fGeomParam::Sample uvsamp;
 	if (floatUVs)
 	{
-
 		int* uvIndices = (int32_t*)alloca(uvIds.length() * sizeof(int32_t));
 		uvIds.get(&(uvIndices[0]));
 
@@ -315,32 +343,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		uvsamp.setIndices(uvIndexSamp);
 
 	}
-	//get the length maya normal array
-	unsigned int normalCount = fNormalArray.length();
-	if (0 == normalCount) {
-		MGlobal::displayInfo("Error:  No Normals");
-		return MStatus::kFailure;
-	}
 
-	//convert maya normal array to interleaved float array
-	float * floatNorms = (float*)alloca(sizeof(float) * 3 * normalCount);
-	//unsigned int normalIndex;
-	for (normalIndex = 0; normalIndex < (int)normalCount; normalIndex++) {
-		floatNorms[normalIndex*3] =			fNormalArray[normalIndex].x;
-		floatNorms[normalIndex*3+1] =		fNormalArray[normalIndex].y;
-		floatNorms[normalIndex*3+2] =		fNormalArray[normalIndex].z;
-	}
-	
-	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample(NULL, 0), Alembic::AbcGeom::kVertexScope);
-	Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(floatNorms[0]), normalCount), Alembic::AbcGeom::kFacevaryingScope);
-	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(perFaceVertexNormals[0]), perFaceVertexNormals.size() / 3), Alembic::AbcGeom::kVertexScope);
-	//Alembic::Abc::UInt32ArraySample nIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(perFaceVertexNormalIndices[0]), perFaceVertexNormalIndices.size()));
-	//nsamp.setIndices(nIndexSamp);
-
-	char buf[256];
-	_itoa_s(perFaceVertexNormals.size()/3, buf, 10);
-	MString intStr = MString( buf );
-	MGlobal::displayInfo("perFaceVertexNormals.size = " + intStr);
 
 	//populate the alembic poly mesh base sample(s) object(s)
 	Alembic::AbcGeom::OPolyMeshSchema::Sample mesh_sample(
@@ -348,25 +351,20 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		Alembic::Abc::Int32ArraySample(faceVertIndices, numFaceVertIndices),
 		Alembic::Abc::Int32ArraySample(numVertsPerFace, numFaces),
 		uvsamp, nsamp);
-
-
 	//mesh_sample.setNormals(nsamp);
+
 	//set the alembic poly mesh base sample(s) object(s)
 	meshSchema.set(mesh_sample);
-	//now output facet texture mapping sets
-
+	
+	//Debug Abc Object Normals
 	//buf = "\0";
 	//Alembic::Abc::N3fArraySample normals = mesh_sample.getNormals().getVals();
-	
 	//_itoa_s(normals.size(), buf, 10);
 	//MString normalsSizeStr = MString(buf);
 	//MGlobal::displayInfo("meshSchema.numSamples = " + normalsSizeStr);
 
 	//if there is more than one set, the last set simply consists of all 
 	//polygons, so we won't include it
-	//\
-
-
 	/*
 	unsigned int setCount = fPolygonSets.length();
 	if (setCount > 1) {
