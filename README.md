@@ -1,4 +1,4 @@
-## Maya Alembic Export Plug-In
+#### Maya Alembic Export Plug-In
 
 Currently, the only posted Maya Plugin is an Alembic Export Plugin.  Motivations for packaging Alembic geometry export functionality as a geometry export plugin are several-fold over the existing Alembic Geometry Cache Export functionality packaged by default with a Maya release:
 
