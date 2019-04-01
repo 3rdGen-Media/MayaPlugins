@@ -7,3 +7,4 @@ Currently, the only posted Maya Plug-In is an Alembic Geometry Export Plug-In.  
 2.   To provide a path for utilizing Alembic as a complete standalone renderable asset format:
      - To extend the Maya Alembic output functionality to include per-mesh material set groupings as well as allow for arbitrarily defined Face Set groupings
      - To extend current Maya Alembic output functionality to make use of the new(ish) AbcMaterial API, populated with hypershade material object attributes
+     - To extend Alembic with support for skeletal keyframe animation samples represented as joint transform hierarchies
