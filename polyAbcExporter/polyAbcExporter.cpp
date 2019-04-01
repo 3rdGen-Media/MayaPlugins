@@ -171,6 +171,10 @@ MStatus polyAbcExporter::writer(const MFileObject& file,
 	//Note 2:  Alembic Objects must go out of scope to clean themselves up.  Writes do not occur until the object is destructed.  (i.e. The archive cannot be global or it will never go out of scope)
 	Alembic::Abc::OArchive archive = Alembic::Abc::CreateArchiveWithInfo(Alembic::AbcCoreOgawa::WriteArchive(), fileName.asUTF8(), appWriter, "", Alembic::Abc::MetaData() );
 	Alembic::Abc::OObject topObject = archive.getTop();// Alembic::Abc::OObject(g_archive, Alembic::Abc::kTop)
+	Alembic::Abc::OObject mtlObject(topObject, "materials");
+
+	//Initialize a hash to store a unique list hypershade objects used by all our processed meshes
+	//std::unordered_set<MObject*> hypershadeMaterials;
 
 	//We are using the Alembic API to open the file stream for us
 	//So we leave this here to demonstrate that we don't need to do this explicitly
@@ -190,19 +194,39 @@ MStatus polyAbcExporter::writer(const MFileObject& file,
 	//check which objects are to be exported, and invoke the corresponding
 	//methods; only 'export all' and 'export selection' are allowed
 	if (MPxFileTranslator::kExportAccessMode == mode) {
-		if (MStatus::kFailure == exportAll(topObject)) {
+		if (MStatus::kFailure == exportAll(topObject, mtlObject)) {
 			return MStatus::kFailure;
 		}
 	}
 	else if (MPxFileTranslator::kExportActiveAccessMode == mode) {
-		if (MStatus::kFailure == exportSelection(topObject)) {
+		if (MStatus::kFailure == exportSelection(topObject, mtlObject)) {
 			return MStatus::kFailure;
 		}
 	}
 	else {
 		return MStatus::kFailure;
 	}
-	
+
+	/*
+	char buf[256];
+	_itoa_s(hypershadeMaterials.size(), buf, 10);
+	MString mtlSetSize(buf);
+	MGlobal::displayInfo("Hypershade Material Set Size:  " + mtlSetSize + "\n");
+
+	for (auto it = hypershadeMaterials.begin(); it != hypershadeMaterials.end(); ++it)
+	{
+
+		MObject * shaderNode = *it;
+		MFnDependencyNode shaderDependencyNode(*shaderNode);
+		//MGlobal::displayInfo("shaderNode.apiType:  " + apiTypeStr + "\n");
+		MGlobal::displayInfo("Hypershade Node.name:  " + shaderDependencyNode.name() + "\n");
+
+		//We will store per mtl mesh face groupings as an ArbGeomParam,
+		//While we will define arbitrary face set partitions groupings using AbcGeom OFaceSet
+		//std::string mtlName = std::string(shaderDependencyNode.name().asUTF8());
+	}
+	*/
+
 	//There is no "Footer" data for Alembic files
 	//Closest equivalent are the top level indexed metadata Ogawa Nodes, but again
 	//OArchive will take care of writing this stuff for us
@@ -309,7 +333,7 @@ Alembic::AbcGeom::OXform polyAbcExporter::processMeshXform(const MDagPath meshDa
 	return xformObj;
 }
 
-MStatus polyAbcExporter::processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject)
+MStatus polyAbcExporter::processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject)
 {
 	//Summary:	processes the mesh on the given dag path by extracting its geometry
 	//			and writing this data to file
@@ -333,7 +357,7 @@ MStatus polyAbcExporter::processPolyMesh(const MDagPath dagPath, Alembic::Abc::O
 			delete pWriter;
 			return MStatus::kFailure;
 		}
-		if (MStatus::kFailure == pWriter->writeGeometryToArchive(meshXform)) {
+		if (MStatus::kFailure == pWriter->writeGeometryToArchive(meshXform, mtlObject)) {
 			delete pWriter;
 			return MStatus::kFailure;
 		}
@@ -344,7 +368,7 @@ MStatus polyAbcExporter::processPolyMesh(const MDagPath dagPath, Alembic::Abc::O
 }
 
 
-MStatus polyAbcExporter::exportAll(Alembic::Abc::OObject &topObject)
+MStatus polyAbcExporter::exportAll(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject)
 //Summary:	finds and outputs all polygonal meshes in the DAG
 //Args   :	os - an output stream to write to
 //Returns:  MStatus::kSuccess if the method succeeds
@@ -375,7 +399,7 @@ MStatus polyAbcExporter::exportAll(Alembic::Abc::OObject &topObject)
 		//if this node is visible, then process the poly mesh it represents
 		//
 		if (isVisible(visTester, status) && MStatus::kSuccess == status) {
-			if (MStatus::kFailure == processPolyMesh(dagPath, topObject)) {
+			if (MStatus::kFailure == processPolyMesh(dagPath, topObject, mtlObject)) {
 				return MStatus::kFailure;
 			}
 		}
@@ -384,7 +408,7 @@ MStatus polyAbcExporter::exportAll(Alembic::Abc::OObject &topObject)
 }
 
 
-MStatus polyAbcExporter::exportSelection(Alembic::Abc::OObject &topObject)
+MStatus polyAbcExporter::exportSelection(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject)
 //Summary:	finds and outputs all selected polygonal meshes in the DAG
 //Args   :	os - an output stream to write to
 //Returns:  MStatus::kSuccess if the method succeeds
@@ -415,7 +439,7 @@ MStatus polyAbcExporter::exportSelection(Alembic::Abc::OObject &topObject)
 			return MStatus::kFailure;
 		}
 
-		if (MStatus::kFailure == processPolyMesh(dagPath, topObject)) {
+		if (MStatus::kFailure == processPolyMesh(dagPath, topObject, mtlObject)) {
 			return MStatus::kFailure;
 		}
 	}

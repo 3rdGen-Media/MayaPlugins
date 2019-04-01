@@ -38,6 +38,7 @@
 
 #include "polyWriter.h"
 #include "AbcExportInterface.h"
+#include <unordered_set>
 
 //Used to store UV set information
 //
@@ -55,8 +56,9 @@ class polyAbcWriter : public polyWriter {
 				~polyAbcWriter () override;
 				MStatus extractGeometry () override;
 				MStatus writeToFile (ostream& os) override; //not gonna use this, but compiler needs it
-				MStatus writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj);
+				MStatus writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj, Alembic::Abc::OObject &mtlObject);
 
+				friend bool operator< (const MObject &left, const MObject &right){ return true;}
 	private:
 		//Functions
 		//

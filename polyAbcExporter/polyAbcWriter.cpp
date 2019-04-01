@@ -113,7 +113,8 @@ MStatus polyAbcWriter::writeToFile(ostream& os)
 }
 
 
-MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj)
+
+MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj, Alembic::Abc::OObject &mtlObject)
 //Summary:	outputs the geometry of this polygonal mesh in Alembic Object format to an Alembic [Ogawa] Archive
 //Args   :	os - an output stream to write to
 //Returns:  MStatus::kSuccess if the method succeeds
@@ -124,7 +125,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	//Debugging Output
 	MGlobal::displayInfo("polyAbcWriter::writeGeometryToArchive");
 	//printf("polyAbcWriter::writeGeometryToArchive\n");
-	MGlobal::displayInfo("fMesh->fullPathName = " + fMesh->fullPathName() );
+	MGlobal::displayInfo("fMesh->fullPathName = " + fMesh->fullPathName());
 	MGlobal::displayInfo("fMesh->partialPathName = " + fMesh->partialPathName());
 
 	//Create a PolyMesh ABC Object (Schema) as Child of the Xform Input Object
@@ -147,15 +148,16 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	if (0 == vertexCount) {
 		return MStatus::kFailure;
 	}
-	for (unsigned vertexIndex = 0; vertexIndex< vertexCount; vertexIndex++) {
-		floatVerts[vertexIndex*3] =		(float)fVertexArray[vertexIndex].x;
-		floatVerts[vertexIndex*3+1] =	(float)fVertexArray[vertexIndex].y;
-		floatVerts[vertexIndex*3+2] =	(float)fVertexArray[vertexIndex].z;
+	for (unsigned vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
+		floatVerts[vertexIndex * 3] = (float)fVertexArray[vertexIndex].x;
+		floatVerts[vertexIndex * 3 + 1] = (float)fVertexArray[vertexIndex].y;
+		floatVerts[vertexIndex * 3 + 2] = (float)fVertexArray[vertexIndex].z;
 	}
 
 	//2)  Populate mesh floating point interleaved normal array + size of array
 
 	//Get the length of maya mesh normal array
+	
 	unsigned int normalCount = fNormalArray.length();
 	if (0 == normalCount) {
 		MGlobal::displayInfo("Error:  No Normals");
@@ -171,17 +173,54 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		floatNorms[normalIndex * 3 + 2] = fNormalArray[normalIndex].z;
 	}
 
-	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample(NULL, 0), Alembic::AbcGeom::kVertexScope);
-	Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(floatNorms[0]), normalCount), Alembic::AbcGeom::kFacevaryingScope);
-	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(perFaceVertexNormals[0]), perFaceVertexNormals.size() / 3), Alembic::AbcGeom::kVertexScope);
-	//Alembic::Abc::UInt32ArraySample nIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(perFaceVertexNormalIndices[0]), perFaceVertexNormalIndices.size()));
-	//nsamp.setIndices(nIndexSamp);
+	
 
 	//char buf[256];
 	//_itoa_s(perFaceVertexNormals.size() / 3, buf, 10);
 	//MString intStr = MString(buf);
 	//MGlobal::displayInfo("perFaceVertexNormals.size = " + intStr);
 
+	//3)	Populate a floating point interleaved uv array + size of array
+	MIntArray uvCounts;
+	MIntArray uvIds;
+	UVSet* currUVSet;
+	float * floatUVs = NULL;
+	unsigned int uvIndex, uvCount;
+
+	//Iterate over all UV sets until we find the current set associated with this mesh
+	for (currUVSet = fHeadUVSet; currUVSet != NULL; currUVSet = currUVSet->next) {
+		if (currUVSet->name == fCurrentUVSetName) {
+
+			//If we match the current uv set associated with the geometry...
+			MGlobal::displayInfo("Current ");
+			meshSchema.setUVSourceName(fCurrentUVSetName.asUTF8());
+
+			//Get the uv set element count
+			uvCount = currUVSet->uArray.length();
+
+			//Allocate memory for an interleaved floating point uv array
+			//and convert maya u and v arrays to an interleaved float array
+			floatUVs = (float*)alloca(sizeof(float) * 2 * uvCount);
+			for (uvIndex = 0; uvIndex < uvCount; uvIndex++)
+			{
+				floatUVs[uvIndex * 2] = currUVSet->uArray[uvIndex];
+				floatUVs[uvIndex * 2 + 1] = currUVSet->vArray[uvIndex];
+			}
+
+			//4.iii) Populate unsigned int per face uv index array + size of array
+			fMesh->getAssignedUVs(uvCounts, uvIds, &fCurrentUVSetName);
+
+			MGlobal::displayInfo("UV Set:  " + currUVSet->name + "\n");
+			break;
+		}
+
+		//Display the uv set for the loop iteration for debugging
+		MGlobal::displayInfo("UV Set:  " + currUVSet->name + "\n");
+	}
+
+	//allocate memory to store and populate uv index array in custom order
+	int uvArrayIndex = 0;
+	int* uvIndices = (int32_t*)alloca(uvIds.length() * sizeof(int32_t));
 
 	//4.i)  Populate unsigned int per face vertex count array
 
@@ -192,7 +231,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	int numFaceVertIndices = 0;
 
 	//Iterate over each polygon to populate per face vertex count array and count the total number of indices
-	for (unsigned faceIndex = 0; faceIndex < numFaces; faceIndex++) 
+	for (unsigned faceIndex = 0; faceIndex < numFaces; faceIndex++)
 	{
 		//get num indices in each face
 		int numVertsInFace = (int)fMesh->polygonVertexCount(faceIndex, &status);
@@ -206,21 +245,24 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		}
 	}
 
+	//Now that we know the total number of per face vert indices
+	//allocate a normal array that maps 1:1 to these indices
+	//float * floatNorms = (float*)alloca(sizeof(float) * 3 * numFaceVertIndices);
+
 	//4.ii)  Populate an array to store the vertex indices for each face
 
 	//Allocate an array to store per face vertex indices for all faces
 	int * faceVertIndices = (int*)alloca(numFaceVertIndices * sizeof(int));
-	int tmpFaceIndices[256];
+
+	//Allocate an array to store per face normal indices for all faces
+	int * faceNormIndices = (int*)alloca(numFaceVertIndices * sizeof(int));
 
 	//Define variables to use in for loop
 	int faceVertIndex = 0;
 	MIntArray perFaceVertIndexArray;
-
-	//int * faceNormalIndices = (int*)alloca(numFaceVertIndices * sizeof(int));
-	//int normalIndex = 0;
-	//std::vector<float> perFaceVertexNormals;
-	//std::vector<uint32_t> perFaceVertexNormalIndices;
-	//uint32_t perFaceVertexNormalIndex = 0;
+	MIntArray perFaceNormIndexArray;
+	int tmpFaceVertIndices[256];
+	int tmpFaceNormIndices[256];
 
 	//Iterate over each polygon again to populate per face vertex count array(with proper winding order considerations)
 	for (unsigned faceIndex = 0; faceIndex < numFaces; faceIndex++) {
@@ -231,9 +273,22 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 			MGlobal::displayError("MFnMesh::getPolygonVertices");
 			return MStatus::kFailure;
 		}
+
 		//read array of vertex indices for the current face
 		//indexArray.get( &(faceVertIndices[vertIndex]) );
-		perFaceVertIndexArray.get(&(tmpFaceIndices[0]));
+		perFaceVertIndexArray.get(&(tmpFaceVertIndices[0]));
+
+		//Get a temporary array containing the indices into the vertex array list for each face in the mesh
+		status = fMesh->getFaceNormalIds(faceIndex, perFaceNormIndexArray);
+		if (MStatus::kFailure == status) {
+			MGlobal::displayError("MFnMesh::getFaceNormalIds");
+			return MStatus::kFailure;
+		}
+
+		//read array of vertex indices for the current face
+		//indexArray.get( &(faceVertIndices[vertIndex]) );
+		perFaceNormIndexArray.get(&(tmpFaceNormIndices[0]));
+
 
 		//Access per face normals if desired
 		/*
@@ -260,7 +315,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		//Iterate over each vert in the face to populate the array of face vertex indices
 		//while reversing the winding order for the face's vertices if necessary for our rendering software
 		int faceVertCount = 0;
-		for (int j = perFaceVertIndexArray.length()-1; j>-1; j--)
+		for (int j = perFaceVertIndexArray.length() - 1; j > -1; j--)
 		{
 			//Access the faces individual UV data if desired
 			/*
@@ -275,12 +330,16 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				}
 			}
 			*/
-			
+
 			//Alembic interchange formats require front facing polygons to be in clockwise (aka left-handed) vertex order,
 			//while Maya and most, if not all, other tools  use counter-clockwise (right-handed) vertex order, so we need to reverse the winding order
 			//when writing to and reading from and Alembic Archive
-			faceVertIndices[faceVertIndex + faceVertCount] = tmpFaceIndices[j];
+			faceVertIndices[faceVertIndex + faceVertCount] = tmpFaceVertIndices[j];
+			faceNormIndices[faceVertIndex + faceVertCount] = tmpFaceNormIndices[j];
 
+			int uvID;
+			status = fMesh->getPolygonUVid(faceIndex, j, uvID, &currUVSet->name);
+			uvIndices[uvArrayIndex++] = uvID;
 			//Populate per vertex normal data if desired
 			//int perFaceVertIndex = faceVertIndices[vertIndex + j];			
 			//custom populate a vertex normal array if a different order from Maya is needed-
@@ -295,55 +354,24 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		faceVertIndex += perFaceVertIndexArray.length();
 	}
 
-	//3)		Populate a floating point interleaved uv array + size of array
-	MIntArray uvCounts;
-	MIntArray uvIds;
-	UVSet* currUVSet;
-	float * floatUVs = NULL;
-	unsigned int uvIndex, uvCount;
-	
-	//Iterate over all UV sets until we find the current set associated with this mesh
-	for (currUVSet = fHeadUVSet; currUVSet != NULL; currUVSet = currUVSet->next) {
-		if (currUVSet->name == fCurrentUVSetName) {
-
-			//If we match the current uv set associated with the geometry...
-			MGlobal::displayInfo("Current ");
-			meshSchema.setUVSourceName(fCurrentUVSetName.asUTF8());
-
-			//Get the uv set element count
-			uvCount = currUVSet->uArray.length();
-
-			//Allocate memory for an interleaved floating point uv array
-			//and convert maya u and v arrays to an interleaved float array
-			floatUVs = (float*)alloca(sizeof(float) * 2 * uvCount);
-			for (uvIndex = 0; uvIndex < uvCount; uvIndex++)
-			{
-				floatUVs[uvIndex*2] = currUVSet->uArray[uvIndex];
-				floatUVs[uvIndex*2+1] = currUVSet->vArray[uvIndex];
-			}
-
-			//4.iii) Populate unsigned int per face uv index array + size of array
-			fMesh->getAssignedUVs(uvCounts, uvIds, &fCurrentUVSetName);
-		}
-
-		//Display the uv set for the loop iteration for debugging
-		MGlobal::displayInfo("UV Set:  " + currUVSet->name  + "\n");
-	}
-	
+	//Create an AbcGeom Normal Sample Object Container
+	//Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample(NULL, 0), Alembic::AbcGeom::kVertexScope);
+	Alembic::AbcGeom::ON3fGeomParam::Sample nsamp(Alembic::Abc::N3fArraySample((const Alembic::Abc::N3f*)&(floatNorms[0]), normalCount), Alembic::AbcGeom::kFacevaryingScope);
+	Alembic::Abc::UInt32ArraySample nIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(faceNormIndices[0]), numFaceVertIndices));
+	nsamp.setIndices(nIndexSamp);
 
 	//Create an AbcGeom UV Sample Object Container
 	Alembic::AbcGeom::OV2fGeomParam::Sample uvsamp;
 	if (floatUVs)
 	{
-		int* uvIndices = (int32_t*)alloca(uvIds.length() * sizeof(int32_t));
-		uvIds.get(&(uvIndices[0]));
+		//int* uvIndices = (int32_t*)alloca(uvIds.length() * sizeof(int32_t));
+		//uvIds.get(&(uvIndices[0]));
 
 		uvsamp = Alembic::AbcGeom::OV2fGeomParam::Sample(Alembic::Abc::V2fArraySample((const Alembic::Abc::V2f*)floatUVs, uvCount), Alembic::AbcGeom::kFacevaryingScope);
 		Alembic::Abc::UInt32ArraySample uvIndexSamp(Alembic::Abc::UInt32ArraySample((const uint32_t*)&(uvIndices[0]), uvIds.length()));
 		uvsamp.setIndices(uvIndexSamp);
 
 	}
-
 
 	//populate the alembic poly mesh base sample(s) object(s)
 	Alembic::AbcGeom::OPolyMeshSchema::Sample mesh_sample(
@@ -355,7 +383,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 	//set the alembic poly mesh base sample(s) object(s)
 	meshSchema.set(mesh_sample);
-	
+
 	//Debug Abc Object Normals
 	//buf = "\0";
 	//Alembic::Abc::N3fArraySample normals = mesh_sample.getNormals().getVals();
@@ -365,7 +393,6 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 	//if there is more than one set, the last set simply consists of all 
 	//polygons, so we won't include it
-	/*
 	unsigned int setCount = fPolygonSets.length();
 	if (setCount > 1) {
 		//setCount--;
@@ -374,9 +401,11 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	//MIntArray faces;
 	std::vector<int32_t> faces;
 
+	std::map<std::string, std::vector<MObject>> mtlGroupMap;
+
 	unsigned int i;
 	for (i = 0; i < setCount; i++) {
-		
+
 		MObject set = fPolygonSets[i];
 		MObject comp = fPolygonComponents[i];
 		MFnSet fnSet(set, &status);
@@ -411,7 +440,9 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 		//Alembic OFaceSet SDK exepects face sets to be ordered by face number 
 		std::sort(faces.begin(), faces.end());
-		Alembic::AbcGeom::OFaceSetSchema::Sample fSetSamp(Alembic::Abc::Int32ArraySample(&(faces[0]), faces.size()) );
+
+		//Alembic::AbcGeom::OFaceSetSchema::Sample fSetSamp(Alembic::Abc::Int32ArraySample(&(faces[0]), faces.size()) );
+
 
 		//Find the texture that is applied to this set.  First, get the
 		//shading node connected to the set.  Then, if there is an input
@@ -423,19 +454,54 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 			continue;
 		}
 
+		/*
+		//put the hypershade MObject in the "global" materialHash so we can process it later
+		if (hypershadeMaterials.find(shaderNode) != hypershadeMaterials.end())
+		{
+			std::vector<MObject> shaderObjectMap = hypershadeObjectMap[shaderNode];
+			shaderObjectMap.push_back(fMesh);
+			//mtlFaceSets.push_back(fPolygonSets[i]);
+		}
+		else
+		*/
+
+		//hypershadeMaterials.insert(&shaderNode);
+
+		
+
 		MString apiTypeStr = MString(shaderNode.apiTypeStr());
 		//MString shaderName = MString(shaderNode.);
 
-		MFnDependencyNode shaderDependencyNode(shaderNode);// .name() + " ";
-		//MFnDependencyNode(sdNode).name() + " ";
+		MFnDependencyNode shaderDependencyNode(shaderNode);
+	
 
 		MGlobal::displayInfo("shaderNode.apiType:  " + apiTypeStr + "\n");
 		MGlobal::displayInfo("shaderNode.name:  " + shaderDependencyNode.name() + "\n");
 
-		std::string faceSetName = std::string(shaderDependencyNode.name().asUTF8());
-		Alembic::AbcGeom::OFaceSet materialFaceSet = meshSchema.createFaceSet(faceSetName);
-		Alembic::AbcGeom::OFaceSetSchema mtlFaceSetSchema = materialFaceSet.getSchema();
-		mtlFaceSetSchema.set(fSetSamp);
+		//We will store per mtl mesh face groupings as an ArbGeomParam,
+		//While we will define arbitrary face set partitions groupings using AbcGeom OFaceSet
+		std::string mtlName = std::string(shaderDependencyNode.name().asUTF8());
+		Alembic::AbcMaterial::OMaterial hypershadeMat(mtlObject, mtlName);
+		hypershadeMat.getSchema().setShader("crShader", "surface", "cr_pbr_mesh_vbo");
+
+
+		//add the material to the map, or extend the material set if it already exists
+		if (mtlGroupMap.find(mtlName) != mtlGroupMap.end())
+		{
+			std::vector<MObject> mtlFaceSets = mtlGroupMap[mtlName];
+			mtlFaceSets.push_back(fPolygonSets[i]);
+		}
+		else
+		{
+			//Remember to release map vector element memory when finished
+			std::vector<MObject> * mtlFaceSets = new std::vector<MObject>;
+			mtlGroupMap.insert(mtlGroupMap.end(), std::pair<std::string, std::vector<MObject>>(mtlName, *mtlFaceSets));// fPolygonSets[i]);
+		}
+
+		//Alembic::AbcGeom::OStringGeomParam::Sample(  )
+		//Alembic::AbcGeom::OFaceSet materialFaceSet = meshSchema.createFaceSet(faceSetName);
+		//Alembic::AbcGeom::OFaceSetSchema mtlFaceSetSchema = materialFaceSet.getSchema();
+		//mtlFaceSetSchema.set(fSetSamp);
 
 		//stingray pbr shader
 		if (shaderNode.apiType() == MFn::kPluginHardwareShader)
@@ -462,7 +528,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 			//Find Stingray PBR Diffuse/Albedo Map
 			MPlug colorPlug;
-			if( useColorMap )
+			if (useColorMap)
 				colorPlug = MFnDependencyNode(shaderNode).findPlug("TEX_color_map", false, &status);
 			else
 				colorPlug = MFnDependencyNode(shaderNode).findPlug("base_color", false, &status);
@@ -501,6 +567,8 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				filenamePlug.getValue(colorTextureName);
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Color Texture Name =  " + colorTextureName + "\n");
+				Alembic::Abc::OStringProperty diffuseTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicDiffuseTexture);
+				diffuseTextureProperty.set(colorTextureName.asUTF8());
 			}
 
 			//Find Stingray PBR Normal Map
@@ -542,10 +610,13 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 					filenamePlug.getValue(normalTextureName);
 					//Display the uv set for the loop iteration for debugging
 					MGlobal::displayInfo("Normal Texture Name =  " + normalTextureName + "\n");
+					Alembic::Abc::OStringProperty normalTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicNormalTexture);
+					normalTextureProperty.set(normalTextureName.asUTF8());
 				}
 			}
 
-			//Find Stingray PBR Metallic Map
+			//Find Stingray PBR Metallic Map (we will also use this for the specular map, since we may wish to use a Gloss/Specular implemenation
+			//vs a Metallic/Roughness implementation
 			if (useMetallicMap)
 			{
 				MPlug metallicPlug = MFnDependencyNode(shaderNode).findPlug("TEX_metallic_map", false, &status);
@@ -584,6 +655,8 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 					filenamePlug.getValue(metallicTextureName);
 					//Display the uv set for the loop iteration for debugging
 					MGlobal::displayInfo("Metallic Texture Name =  " + metallicTextureName + "\n");
+					Alembic::Abc::OStringProperty specularTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicSpecularTexture);
+					specularTextureProperty.set(metallicTextureName.asUTF8());
 				}
 			}
 
@@ -626,6 +699,9 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 					filenamePlug.getValue(roughnessTextureName);
 					//Display the uv set for the loop iteration for debugging
 					MGlobal::displayInfo("Roughness Texture Name =  " + roughnessTextureName + "\n");
+
+					Alembic::Abc::OStringProperty roughnessTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicRoughnessTexture);
+					roughnessTextureProperty.set(roughnessTextureName.asUTF8());
 				}
 			}
 
@@ -670,6 +746,9 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				filenamePlug.getValue(emissivityTextureName);
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Emissivity Texture Name =  " + emissivityTextureName + "\n");
+
+				Alembic::Abc::OStringProperty emissiveTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicEmissivityTexture);
+				emissiveTextureProperty.set(emissivityTextureName.asUTF8());
 			}
 
 		}
@@ -712,6 +791,8 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				filenamePlug.getValue(colorTextureName);
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Color Texture Name =  " + colorTextureName + "\n");
+				Alembic::Abc::OStringProperty diffuseTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicDiffuseTexture);
+				diffuseTextureProperty.set(colorTextureName.asUTF8());
 			}
 
 			//Find BLINN/PHONG NORMAL MAP
@@ -752,6 +833,8 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				filenamePlug.getValue(normalTextureName);
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Normal Texture Name =  " + normalTextureName + "\n");
+				Alembic::Abc::OStringProperty normalTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicNormalTexture);
+				normalTextureProperty.set(normalTextureName.asUTF8());
 			}
 
 			//FIND BLINN/PHONG SPECULAR MAP
@@ -791,17 +874,64 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				filenamePlug.getValue(specTextureName);
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Specular Texture Name =  " + specTextureName + "\n");
+				Alembic::Abc::OStringProperty specularTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicSpecularTexture);
+				specularTextureProperty.set(specTextureName.asUTF8());
 			}
 
-			
 		}
-		
-
 
 	}
-	*/
 
-	MGlobal::displayInfo("writeGeometryToArchiveEnd");
+	//write the unique Material Names to an Alembic ArbGeomParam
+
+	std::vector<std::string> mtlKeys;
+	uint32_t * mtlKeyOffsets = (uint32_t*)alloca(mtlGroupMap.size() * sizeof(uint32_t));
+
+	uint32_t mtlKeyIndex = 0;
+	uint32_t mtlKeyOffset = 0;
+	//std::map<std::string, std::vector<MObject>>::iterator it1;
+	for (auto it1 = mtlGroupMap.begin(); it1 != mtlGroupMap.end(); ++it1)
+	{
+		//populate key data in format we need for arbGeomParams .vals and .indices properties
+		mtlKeys.push_back(it1->first);
+		mtlKeyOffsets[mtlKeyIndex] = mtlKeyOffset;
+		mtlKeyOffset += mtlKeys[mtlKeyIndex++].length() + 1; //add on for null char
+
+		//release material face set map memory
+		//cout << "Deleteing map value for key: " << it1->first << endl;// "->" << it1->second << endl;						  
+		//delete (std::vector<MObject> *)&(it1->second);
+	}
+
+	//const Abc::TypedArraySample<TRAITS>
+	//mtl
+
+
+	//get a reference to arbGeomParams property of our OPolyMeshSchema
+	Alembic::Abc::OCompoundProperty arbGeomParamProperty = meshSchema.getArbGeomParams();
+
+	//Create a compound child property named
+	Alembic::Abc::OCompoundProperty arbGeomMaterialsProperty = Alembic::Abc::OCompoundProperty(arbGeomParamProperty, ".arbGeomMaterials", meshSchema.getMetaData(), NULL);
+	//create a arbGeomMaterials .vals sub-property to store Material Group Keys
+	Alembic::Abc::OStringArrayProperty mtlKeySampleProperty = Alembic::Abc::OStringArrayProperty(arbGeomMaterialsProperty, ".vals", meshSchema.getMetaData(), NULL);
+	//create a arbGeomMaterials .indices sub-property to store Material Group Offsets
+	Alembic::Abc::OUInt32ArrayProperty mtlKeyOffsetSampleProperty = Alembic::Abc::OUInt32ArrayProperty(arbGeomMaterialsProperty, ".indices", meshSchema.getMetaData(), NULL);
+
+	//prepare a sample to add the Material Group Keys to the arbGeomParams Compound Property
+	Alembic::Abc::StringArraySample mtlKeySamp = Alembic::Abc::StringArraySample(mtlKeys);
+	mtlKeySampleProperty.set(mtlKeySamp);
+
+	//prepare a sample to add the Material Group Key Offsets to the arbGeomParams Compound Property
+	Alembic::Abc::UInt32ArraySample mtlKeyOffsetsSamp = Alembic::Abc::UInt32ArraySample(mtlKeyOffsets, mtlKeys.size());
+	mtlKeyOffsetSampleProperty.set(mtlKeyOffsetsSamp);
+
+	//mAgeProperty = Abc::OFloatArrayProperty(arbGeomParam, ".age",
+	//	mSchema.getMetaData(), animTS);
+	//mMassProperty = Abc::OFloatArrayProperty(arbGeomParam, ".mass",
+	//	mSchema.getMetaData(), animTS);
+	//mColorProperty = Abc::OC4fArrayProperty(arbGeomParam, ".color",
+	//	mSchema.getMetaData(), animTS);
+
+	//MGlobal::displayInfo("writeGeometryToArchiveEnd");
 
 	//TO DO:  set geom bounds
 	//Alembic::Abc::Box3d cbox;

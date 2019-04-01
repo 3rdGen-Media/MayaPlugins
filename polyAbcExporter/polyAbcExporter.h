@@ -30,6 +30,7 @@
 
 #include "polyExporter.h"
 #include "AbcExportInterface.h"
+#include <unordered_set>
 
 class polyAbcExporter : public polyExporter {
 
@@ -52,10 +53,10 @@ class polyAbcExporter : public polyExporter {
 				polyWriter*		createPolyWriter(const MDagPath dagPath, MStatus& status) override;
 				void			writeHeader(Alembic::Abc::OArchive &archive);// override;
 				//void			writeFooter(ostream& os) override;
-				MStatus			exportAll(Alembic::Abc::OObject &topObject);// override;
-				MStatus			exportSelection(Alembic::Abc::OObject &topObject);// override;
+				MStatus			exportAll(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);// override;
+				MStatus			exportSelection(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);// override;
 
-				MStatus			processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject);
+				MStatus			processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);
 				Alembic::AbcGeom::OXform	polyAbcExporter::processMeshXform(const MDagPath meshDagPath, Alembic::Abc::OObject &topObject);
 
 

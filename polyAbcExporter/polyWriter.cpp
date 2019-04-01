@@ -250,7 +250,6 @@ MStatus polyWriter::outputSets(ostream& os)
 		//shading node connected to the set.  Then, if there is an input
 		//attribute called "color", search upstream from it for a texture
 		//file node.
-		//
 		MObject shaderNode = findShader(set);
 		if (MObject::kNullObj == shaderNode) {
 			continue;

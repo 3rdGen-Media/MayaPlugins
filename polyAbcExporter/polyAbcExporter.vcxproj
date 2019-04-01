@@ -89,11 +89,11 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(MAYA_PATH)\include;$(ILMBASE_PATH)\include;$(ALEMBIC_PATH)\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MAYA_PATH)\include;$(ILMBASE_PATH)\include\OpenEXR;$(ALEMBIC_PATH)\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(MAYA_PATH)\lib;$(ILMBASE_PATH)\lib;$(ALEMBIC_PATH)\lib;C:\Program Files (x86)\Visual Leak Detector\lib\Win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>OpenMaya.lib;Foundation.lib;Imath-2_2.lib;Half.lib;Iex-2_2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>OpenMaya.lib;Foundation.lib;Imath-2_2.lib;Half.lib;Iex-2_2.lib;Alembic.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
