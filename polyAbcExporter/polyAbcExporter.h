@@ -57,7 +57,7 @@ class polyAbcExporter : public polyExporter {
 				MStatus			exportSelection(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);// override;
 
 				MStatus			processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);
-				Alembic::AbcGeom::OXform	polyAbcExporter::processMeshXform(const MDagPath meshDagPath, Alembic::Abc::OObject &topObject);
+				Alembic::AbcGeom::OXform processMeshXform(const MDagPath meshDagPath, Alembic::Abc::OObject &topObject);
 
 
 };
