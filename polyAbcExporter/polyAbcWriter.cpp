@@ -441,8 +441,6 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		//Alembic OFaceSet SDK exepects face sets to be ordered by face number 
 		std::sort(faces.begin(), faces.end());
 
-		//Alembic::AbcGeom::OFaceSetSchema::Sample fSetSamp(Alembic::Abc::Int32ArraySample(&(faces[0]), faces.size()) );
-
 
 		//Find the texture that is applied to this set.  First, get the
 		//shading node connected to the set.  Then, if there is an input
@@ -478,6 +476,13 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		MGlobal::displayInfo("shaderNode.apiType:  " + apiTypeStr + "\n");
 		MGlobal::displayInfo("shaderNode.name:  " + shaderDependencyNode.name() + "\n");
 
+		//Create the Alembic:AbcGeom OFaceSet corresponding to this shader/material
+		Alembic::AbcGeom::OFaceSet hypershadeMatFaceSet = meshSchema.createFaceSet(shaderDependencyNode.name().asUTF8());
+		Alembic::AbcGeom::OFaceSetSchema hypershadeMatFaceSetSchema = hypershadeMatFaceSet.getSchema();
+		Alembic::AbcGeom::OFaceSetSchema::Sample fSetSamp(Alembic::Abc::Int32ArraySample(&(faces[0]), faces.size()));
+		hypershadeMatFaceSetSchema.set(fSetSamp);
+		hypershadeMatFaceSetSchema.setFaceExclusivity( Alembic::AbcGeom::kFaceSetExclusive ); //until we figure out how to do proprietary pbr material mixing, we will mandate face set exclusivity
+
 		//We will store per mtl mesh face groupings as an ArbGeomParam,
 		//While we will define arbitrary face set partitions groupings using AbcGeom OFaceSet
 		std::string mtlName = std::string(shaderDependencyNode.name().asUTF8());
@@ -502,6 +507,14 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		//Alembic::AbcGeom::OFaceSet materialFaceSet = meshSchema.createFaceSet(faceSetName);
 		//Alembic::AbcGeom::OFaceSetSchema mtlFaceSetSchema = materialFaceSet.getSchema();
 		//mtlFaceSetSchema.set(fSetSamp);
+
+		// Add the standard Maya project paths
+		MString projectPath;
+		status = MGlobal::executeCommand(MString("workspace -q -rd;"), projectPath);
+		if (status == MS::kSuccess)
+		{
+			MGlobal::displayInfo("Project Path:  " + projectPath + "\n");
+		}
 
 		//stingray pbr shader
 		if (shaderNode.apiType() == MFn::kPluginHardwareShader)
@@ -568,7 +581,9 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Color Texture Name =  " + colorTextureName + "\n");
 				Alembic::Abc::OStringProperty diffuseTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicDiffuseTexture);
-				diffuseTextureProperty.set(colorTextureName.asUTF8());
+				
+				//set the relative path to the texture on diskbased on the project path
+				diffuseTextureProperty.set(colorTextureName.asUTF8() + strlen(projectPath.asUTF8()) -1 );
 			}
 
 			//Find Stingray PBR Normal Map
@@ -611,7 +626,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 					//Display the uv set for the loop iteration for debugging
 					MGlobal::displayInfo("Normal Texture Name =  " + normalTextureName + "\n");
 					Alembic::Abc::OStringProperty normalTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicNormalTexture);
-					normalTextureProperty.set(normalTextureName.asUTF8());
+					normalTextureProperty.set(normalTextureName.asUTF8() + strlen(projectPath.asUTF8()) - 1);
 				}
 			}
 
@@ -656,7 +671,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 					//Display the uv set for the loop iteration for debugging
 					MGlobal::displayInfo("Metallic Texture Name =  " + metallicTextureName + "\n");
 					Alembic::Abc::OStringProperty specularTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicSpecularTexture);
-					specularTextureProperty.set(metallicTextureName.asUTF8());
+					specularTextureProperty.set(metallicTextureName.asUTF8() + strlen(projectPath.asUTF8())-1);
 				}
 			}
 
@@ -701,7 +716,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 					MGlobal::displayInfo("Roughness Texture Name =  " + roughnessTextureName + "\n");
 
 					Alembic::Abc::OStringProperty roughnessTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicRoughnessTexture);
-					roughnessTextureProperty.set(roughnessTextureName.asUTF8());
+					roughnessTextureProperty.set(roughnessTextureName.asUTF8() + strlen(projectPath.asUTF8())-1);
 				}
 			}
 
@@ -747,8 +762,8 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Emissivity Texture Name =  " + emissivityTextureName + "\n");
 
-				Alembic::Abc::OStringProperty emissiveTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicEmissivityTexture);
-				emissiveTextureProperty.set(emissivityTextureName.asUTF8());
+				Alembic::Abc::OStringProperty emissiveTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicEmissiveTexture);
+				emissiveTextureProperty.set(emissivityTextureName.asUTF8() + strlen(projectPath.asUTF8())-1);
 			}
 
 		}
@@ -792,7 +807,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Color Texture Name =  " + colorTextureName + "\n");
 				Alembic::Abc::OStringProperty diffuseTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicDiffuseTexture);
-				diffuseTextureProperty.set(colorTextureName.asUTF8());
+				diffuseTextureProperty.set(colorTextureName.asUTF8() + strlen(projectPath.asUTF8())-1);
 			}
 
 			//Find BLINN/PHONG NORMAL MAP
@@ -834,7 +849,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Normal Texture Name =  " + normalTextureName + "\n");
 				Alembic::Abc::OStringProperty normalTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicNormalTexture);
-				normalTextureProperty.set(normalTextureName.asUTF8());
+				normalTextureProperty.set(normalTextureName.asUTF8() + strlen(projectPath.asUTF8())-1);
 			}
 
 			//FIND BLINN/PHONG SPECULAR MAP
@@ -875,7 +890,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 				//Display the uv set for the loop iteration for debugging
 				MGlobal::displayInfo("Specular Texture Name =  " + specTextureName + "\n");
 				Alembic::Abc::OStringProperty specularTextureProperty(hypershadeMat.getSchema().getShaderParameters("crShader", "surface"), kAlembicSpecularTexture);
-				specularTextureProperty.set(specTextureName.asUTF8());
+				specularTextureProperty.set(specTextureName.asUTF8() + strlen(projectPath.asUTF8())-12);
 			}
 
 		}

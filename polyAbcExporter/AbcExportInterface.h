@@ -6,20 +6,22 @@
 #include <Alembic/AbcGeom/All.h>
 #include <Alembic/AbcMaterial/All.h>
 
-static Alembic::Abc::OArchive g_archive;
 
+//Abc Preview Material Definitions
+static const char * kAlembicAlbedoTexture =				"baseColorMap";
+static const char * kAlembicDiffuseTexture	=			"baseColorMap";
 
-static const char * kAlembicAlbedoTexture =				"map_Ka";
-static const char * kAlembicDiffuseTexture	=			"map_Kd";
-static const char * kAlembicAmbientOcclusionTexture =	"map_Ao";
+static const char * kAlembicNormalTexture	=			"normalMap";
+static const char * kAlembicSpecularTexture =			"specularMap";
+static const char * kAlembicEmissiveTexture =			"emissiveMap";
 
-static const char * kAlembicNormalTexture	=			"map_Norm";
-static const char * kAlembicSpecularTexture =			"map_Ks";
-static const char * kAlembicGlossTexture =				"map_Ga";
-static const char * kAlembicMetalTexture =				"map_Ms";
-static const char * kAlembicRoughnessTexture =			"map_Ra";
+static const char * kAlembicGlossTexture =				"glossMap";
+static const char * kAlembicRoughnessTexture =			"roughnessMap";
 
-static const char * kAlembicEmissivityTexture =			"map_Em";
+static const char * kAlembicMetalTexture =				"metallicMap";
+
+static const char * kAlembicAmbientOcclusionTexture =	"occlusionMap";
+
 
 //typedef struct 
 
