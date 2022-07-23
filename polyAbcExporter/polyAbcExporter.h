@@ -32,6 +32,8 @@
 #include "AbcExportInterface.h"
 #include <unordered_set>
 
+
+
 class polyAbcExporter : public polyExporter {
 
 	public:
@@ -53,12 +55,33 @@ class polyAbcExporter : public polyExporter {
 				polyWriter*		createPolyWriter(const MDagPath dagPath, MStatus& status) override;
 				void			writeHeader(Alembic::Abc::OArchive &archive);// override;
 				//void			writeFooter(ostream& os) override;
-				MStatus			exportAll(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);// override;
-				MStatus			exportSelection(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);// override;
+				MStatus			exportAll(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject, Alembic::Abc::OObject &armatureObject);// override;
+				MStatus			exportSelection(Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject, Alembic::Abc::OObject &armatureObject);// override;
 
-				MStatus			processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject);
+
+
+				//Process Joint/Skeletal Armatures
+				MStatus			processRootJoint(const MDagPath rootJointDagPath, MObject& rootNode, Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &armatureObject);
+				bool			processJointNode(MFnDagNode& jointDagNode, MObject *jointObjectNode, Alembic::Abc::OObject &jointXformParentObj, int recursionLevel, std::map<std::string, int> &jointIndexMap, int *jointIndex);
+				//Export Joint Armature Bind Pose(s)
+				bool			exportDagPose(MObject* jointNode, Alembic::AbcGeom::OXform &jointXformObject, int recursionLevel);
+				//Print Joint Armature Bind Pose(s)
+				void polyAbcExporter::writeDagPoseInfo(MObject& dagPoseNode, unsigned index, Alembic::AbcGeom::OXform & jointXformObj, int recursionLevel);
+
+				//Process/export joint/skeletal armature animations
+				bool			processArmaturePose(MFnDagNode& jointDagNode, MObject *jointObjectNode, FILE * animFile, std::map<std::string, int> &jointIndexMap, int recursionLevel);
+				void			exportJointAnimationTransform(MFnDagNode& jointDagNode, FILE * animFile, int recursionLevel);
+
+				//Process/Export Geometry
 				Alembic::AbcGeom::OXform processMeshXform(const MDagPath meshDagPath, Alembic::Abc::OObject &topObject);
+				MStatus			processPolyMesh(const MDagPath dagPath, Alembic::Abc::OObject &topObject, Alembic::Abc::OObject &mtlObject, Alembic::Abc::OObject &armatureObject);
 
+
+			
+
+				//Private Debug Vars
+				FILE*           file;
+				std::map<std::string, std::map<std::string, int>> armaturesMap;
 
 };
 

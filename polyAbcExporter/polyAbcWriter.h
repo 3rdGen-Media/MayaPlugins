@@ -40,8 +40,23 @@
 #include "AbcExportInterface.h"
 #include <unordered_set>
 
+#include <maya/MString.h>
+#include <maya/MObjectArray.h>
+#include <maya/MDoubleArray.h>
+#include <maya/MDagPathArray.h>
+
+
+#include <maya/MItDependencyNodes.h>
+#include <maya/MItGeometry.h>
+#include <maya/MFnSkinCluster.h>
+#include <maya/MFnSingleIndexedComponent.h>
+//#include <maya/MItMeshVertex.h>
+//#include <maya/MItSurfaceCV.h>
+//#include <maya/MItCurveCV.h>
 //Used to store UV set information
 //
+
+
 struct UVSet {
 	MFloatArray	uArray;
 	MFloatArray	vArray;
@@ -55,6 +70,9 @@ class polyAbcWriter : public polyWriter {
 				polyAbcWriter (const MDagPath& dagPath, MStatus& status);
 				~polyAbcWriter () override;
 				MStatus extractGeometry () override;
+				MStatus extractSkinningData(std::map<std::string, std::map<std::string, int>> &armatures);
+				void mapArmatureJoint(Alembic::Abc::OObject &jointObj, std::map<std::string, int> &jointIndexMap, int jointIndex);
+
 				MStatus writeToFile (ostream& os) override; //not gonna use this, but compiler needs it
 				MStatus writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj, Alembic::Abc::OObject &mtlObject);
 
@@ -75,10 +93,35 @@ class polyAbcWriter : public polyWriter {
 				MStatus	outputColors (ostream& os);
 				MStatus	outputUVs (ostream& os);
 
+				//bool polyAbcWriter::isSkinClusterIncluded(MObject &node);
+				void populateInfluenceIndexArray(MFnSkinCluster &skinClusterFn, MIntArray &influenceIndexArray);
+
 		//Data Member
 		//for storing UV information
 		//
 		UVSet*	fHeadUVSet;
+
+
+		MFnSkinCluster * fSkinCluster;
+
+
+		MIntArray		fNumWeightsPerVertexArray;
+		MIntArray		fVertexWeightsInfluenceArray;
+		MFloatArray     fVertexWeightsArray;
+
+
+		MDagPathArray   fInfluenceArray;
+		MIntArray		influenceIndexArray;
+		MObjectArray    fskinClusterArray;
+		MDoubleArray    fWeightArray;
+		MStringArray    fGeometryArray;
+		bool            fAssignAllToSingle;
+
+		// data structures for undo
+		//MDagPathArray   fDagPathArray;
+		//MObjectArray    fComponentArray;
+		//MIntArray      *fInfluenceIndexArrayPtrArray;
+		//MDoubleArray   *fWeightsPtrArray;
 };
 
 #endif /*__POLYABCWRITER_H*/

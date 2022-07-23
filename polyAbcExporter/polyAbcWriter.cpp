@@ -26,11 +26,12 @@
 #include <maya/MPlug.h>
 #include <maya/MIOStream.h>
 #include <time.h>
+#include <maya/MItGeometry.h>
 
 //Iterator Includes
 //
 #include <maya/MItMeshPolygon.h>
-
+#include <maya/MFnSkinCluster.h>
 //Header File
 //
 #include "polyAbcWriter.h"
@@ -42,6 +43,12 @@
 #define HEADER_LINE "===============================================================================\n"
 #define LINE "-------------------------------------------------------------------------------\n"
 
+
+
+#define CheckError(stat,msg)          \
+        if ( MS::kSuccess != stat ) { \
+                MGlobal::displayError(msg); \
+        }
 
 polyAbcWriter::polyAbcWriter(const MDagPath& dagPath, MStatus& status):
 polyWriter(dagPath, status),
@@ -58,13 +65,84 @@ polyAbcWriter::~polyAbcWriter()
 //Summary:  deletes the objects created by this class
 {
 	if (NULL != fHeadUVSet) delete fHeadUVSet;
+	if( NULL != fSkinCluster) delete fSkinCluster;
 }
 
+
+/*
+MObject polyAbcWriter::findSkinCluster(MDagPath& dagPath)
+{
+	MStatus status;
+	MObject skinCluster;
+	MObject geomNode = dagPath.node();
+	MItDependencyGraph dgIt(geomNode, MFn::kSkinClusterFilter, MItDependencyGraph::kUpstream);
+	if (!dgIt.isDone()) {
+		skinCluster = dgIt.currentItem();
+	}
+	return skinCluster;
+}
+*/
+
+
+/*
+bool polyAbcWriter::isSkinClusterIncluded(MObject &node)
+{
+	MStatus   status;
+	unsigned int i;
+
+	if (fSkinClusterArray.length() == 0) return true;
+
+	for (i = 0; i < skinClusterArray.length(); i++) {
+		if (skinClusterArray[i] == node) return true;
+	}
+
+	return false;
+}
+*/
+
+
+void polyAbcWriter::populateInfluenceIndexArray(MFnSkinCluster &skinClusterFn, MIntArray &influenceIndexArray)
+{
+	MStatus status;
+
+	MIntArray  allIndexArray;
+	MDagPathArray pathArray;
+	skinClusterFn.influenceObjects(pathArray, &status);
+	for (unsigned j = 0; j < pathArray.length(); j++) {
+		allIndexArray.append(skinClusterFn.indexForInfluenceObject(pathArray[j]));
+	}
+	/*
+	if (fInfluenceArray.length() > 0) {
+		// Add the influence indices for the influence objects specified in the cmd
+		for (unsigned j = 0; j < fInfluenceArray.length(); j++) {
+			unsigned int index = skinClusterFn.indexForInfluenceObject(influenceArray[j], &status);
+			for (unsigned k = 0; k < allIndexArray.length(); k++) {
+				if ((int)index == allIndexArray[k]) {
+					influenceIndexArray.append(k);
+				}
+			}
+		}
+	}
+	else {
+		// Add the influence indices for all the influence objects of the skinCluster
+		for (unsigned j = 0; j < allIndexArray.length(); j++) {
+			influenceIndexArray.append(j);
+		}
+	}
+	*/
+
+	// Add the influence indices for all the influence objects of the skinCluster
+	for (unsigned j = 0; j < allIndexArray.length(); j++) {
+		influenceIndexArray.append(j);
+	}
+}
 
 MStatus polyAbcWriter::extractGeometry() 
 //Summary:	extracts main geometry as well as all UV sets and each set's
 //			coordinates
 {
+
+	MStatus status;
 	MGlobal::displayInfo("polyAbcWriter::ExtactGeometry\n");
 	printf("polyAbcWriter::ExtactGeometry\n");
 
@@ -101,10 +179,317 @@ MStatus polyAbcWriter::extractGeometry()
 			return MStatus::kFailure;
 		}
 	}
-
+	
 	return MStatus::kSuccess;
 }
 
+void polyAbcWriter::mapArmatureJoint(Alembic::Abc::OObject &jointObj, std::map<std::string, int> &jointIndexMap, int jointIndex)
+{
+	jointIndexMap.insert(std::make_pair(jointObj.getName(), jointIndex));
+
+	MString jointStr(jointObj.getName().c_str());
+	MGlobal::displayInfo("Mapping Armature Joint: " + jointStr + "\n");
+	//iterate and recursively process all ancestors of this joint before returning
+	for (int childIndex = 0; childIndex < jointObj.getNumChildren(); childIndex++)
+	{
+		Alembic::Abc::OObject jointChildObj = jointObj.getChild(childIndex);
+		mapArmatureJoint(jointChildObj, jointIndexMap, jointIndex+1);
+	}
+}
+
+MStatus polyAbcWriter::extractSkinningData(std::map<std::string, std::map<std::string, int>> &armatures)
+{
+	MStatus status;
+	MGlobal::displayInfo("polyAbcWriter::ExtractSkinningData\n");
+	printf("polyAbcWriter::ExtractSkinningData\n");
+
+
+	//findSkinCluster(fMesh);
+	//fDagPath->node();
+
+	FILE * file = NULL;
+	//create a file for debugging joint matrix output
+	file = fopen("C:\\Development\\svn\\CoreRender\\PlugIns\\Maya\\bin\\x64\\Skin.txt", "wb");
+	if (!file) {
+		MString openError("Could not open: ");
+		openError += "Skin.txt";
+		MGlobal::displayError(openError);
+		status = MS::kFailure;
+		return status;
+	}
+
+
+	fDagPath->extendToShape();
+
+	//If the shape is instanced then we need to determine which
+	//instance this path refers to.
+	//
+	//int instanceNum = 0;
+	//if (fDagPath->isInstanced())
+	//	instanceNum = fDagPath->instanceNumber();
+
+	MObject geomNode = fDagPath->node();
+	MItDependencyGraph dgIt(geomNode, MFn::kSkinClusterFilter, MItDependencyGraph::kUpstream);
+
+	/*
+	while (!geomIt.isDone())
+	{
+
+	geomIt
+	}
+	*/
+
+
+	//MItDependencyGraph *dgIt = new MItDependencyGraph(geomNode, MFn::kSkinClusterFilter, MItDependencyGraph::kDepthFirst, MItDependencyGraph::kDownstream, MItDependencyGraph::kNodeLevel, &status);
+	/*
+	for (; !geomIt.isDone(); geomIt.next())
+	{
+	MObject geomObject = geomIt.currentItem();
+	MFnMeshGeom
+
+	}
+	*/
+	//if (!dgIt.isDone()) {
+
+	//1)  find the armature associated with this geometry skin cluster
+
+	//int jointIndex = 0;
+	//Alembic::Abc::OObject armature = armatureCollectionObj.getChild(0);
+
+	//2)  traverse the joint hierarchy in depth first order to create a map of joint names -> joint indices
+	
+	//mapArmatureJoint(armature, jointIndexMap, 0);
+
+	for (; !dgIt.isDone(); dgIt.next())
+	{
+		MObject skinCluster = dgIt.currentItem();
+		//if (isSkinClusterIncluded(skinCluster) ) 
+		{
+			MFnSkinCluster * skinClusterFn = new MFnSkinCluster(skinCluster, &status);
+			if (status == MS::kSuccess) {
+				fSkinCluster = skinClusterFn;
+
+
+
+				/*
+				populateInfluenceIndexArray(*fSkinCluster, fInfluenceIndexArray);
+
+				fWeightArray.clear();
+				fSkinCluster->getWeights(fDagPath, component, influenceIndexArray, fWeightArray);
+
+				if (fWeightArray.length() > 0) {
+				for (j = 0; j < fWeightArray.length(); j++) {
+				appendToResult(weights[j]);
+				}
+				}
+				*/
+
+				// For each skinCluster node, get the list of influence objects
+				//
+				//MFnSkinCluster skinCluster(object);
+				MDagPathArray infs;
+				MStatus stat;
+				unsigned int nInfs = fSkinCluster->influenceObjects(infs, &stat);
+				CheckError(stat, "Error getting influence objects.");
+
+				if (0 == nInfs) {
+					stat = MS::kFailure;
+					CheckError(stat, "Error: No influence objects found.");
+				}
+
+				std::string rootInfluenceNameStr = infs[0].partialPathName().asChar();
+				auto jointMapIt = armatures.find(rootInfluenceNameStr);
+				if (jointMapIt == armatures.end())
+				{
+					MString rootInfluenceNameString = MString(rootInfluenceNameStr.c_str());
+					MGlobal::displayInfo("Failed to find armature for skin cluster root influence (" + rootInfluenceNameString + "). Aborting output for this skin cluster.");
+				}
+
+				std::map<std::string, int> jointIndexMap = jointMapIt->second;
+
+				for (std::map<std::string, int>::const_iterator it = jointIndexMap.begin(); it != jointIndexMap.end(); ++it)
+				{
+					std::string str = it->first;
+					str.append(" ");
+					char buf[10];
+					_itoa(it->second, buf, 10);
+					str.append(buf);
+					str.append("\n");
+					MString mStr(str.c_str());
+					MGlobal::displayInfo(mStr);
+				}
+
+				// loop through the geometries affected by this cluster
+				//
+				unsigned int nGeoms = fSkinCluster->numOutputConnections();
+				for (unsigned int ii = 0; ii < nGeoms; ++ii) {
+					unsigned int index = fSkinCluster->indexForOutputConnection(ii, &stat);
+					CheckError(stat, "Error getting geometry index.");
+
+					// get the dag path of the ii'th geometry
+					//
+					MDagPath skinPath;
+					stat = fSkinCluster->getPathAtIndex(index, skinPath);
+					CheckError(stat, "Error getting geometry path.");
+
+					// iterate through the components of this geometry
+					//
+					MItGeometry gIter(skinPath);
+
+					// print out the path name of the skin, vertexCount & influenceCount
+					//
+					fprintf(file,
+						"%s %d %u\n", skinPath.partialPathName().asChar(),
+						gIter.count(),
+						nInfs);
+
+					// print out the influence objects
+					//
+					for (unsigned int kk = 0; kk < nInfs; ++kk) {
+						fprintf(file, "%s \n", infs[kk].partialPathName().asChar());
+					}
+					fprintf(file, "\n");
+
+					//# get the MPlug for the weightList and weights attributes
+					MPlug wlPlug = MFnDependencyNode(fSkinCluster->object()).findPlug("weightList", false, &stat);
+					//bool useColorMap;
+					//useColorMapPlug.getValue(useColorMap);
+
+					MPlug wPlug = MFnDependencyNode(fSkinCluster->object()).findPlug("weights", false, &stat);					
+					MObject wlAttr = wlPlug.attribute();
+					MObject wAttr = wPlug.attribute();
+					MIntArray wInfIds;// = OpenMaya.MIntArray();
+
+					int tmpInfIndices[256];
+					double tmpWeights[256];
+
+					//	# the weights are stored in dictionary, the key is the vertId,
+					//	# the value is another dictionary whose key is the influence id and
+					//  # value is the weight for that influence
+
+					//an array of arrays
+					//weights = {}
+					for (unsigned int vertexIndex = 0; vertexIndex < wlPlug.numElements(); vertexIndex++)
+					{
+
+						//an array of vertex weights
+						//vWeights = {}
+
+						//# tell the weights attribute which vertex id it represents
+						wPlug.selectAncestorLogicalIndex(vertexIndex, wlAttr);
+
+						//# get the indice of all non - zero weights for this vert
+						wPlug.getExistingArrayAttributeIndices(wInfIds);
+
+						//# create a copy of the current wPlug
+						MPlug infPlug = MPlug(wPlug);
+
+						wInfIds.get(&(tmpInfIndices[0]));
+
+						fprintf(file, "vertex[%d] weights(%d) =  ", vertexIndex, wInfIds.length());
+
+						//fNumWeightsPerVertexArray.append(wInfIds.length());
+						int numWeightsPerVert = 0;
+						for (int infIndex = 0; infIndex < wInfIds.length(); infIndex++)
+						{
+							int infId = tmpInfIndices[infIndex];
+							//# tell the infPlug it represents the current influence id
+							infPlug.selectAncestorLogicalIndex(infId, wAttr);
+
+							//check to see if this influence is actually a joint in the armature
+							std::string skinClusterInfluenceString = infs[infId].partialPathName().asChar();
+
+							//consult the map of armature joints to get the index into the depth first hierarchy
+							//ignore any weights that don't map to joints in the skeletal armature
+							auto jointIndexIt = jointIndexMap.find(skinClusterInfluenceString);
+							if (jointIndexIt != jointIndexMap.end())
+							{
+								int jointIndex = jointIndexIt->second;
+
+								//# add this influence and its weight to this verts weights
+								//vWeights[infIds[infId]] = infPlug.asDouble()
+								//weights[vId] = vWeights
+
+								//for (unsigned int jj = 0; jj < infCount; ++jj) {
+								fprintf(file, "%g (%d), ", infPlug.asDouble(), jointIndex);
+								//}
+
+								fVertexWeightsInfluenceArray.append(jointIndex);
+								fVertexWeightsArray.append(infPlug.asDouble());
+
+								numWeightsPerVert++;
+
+							}
+							else
+							{
+
+								MString skinClusterInfNameString = MString(skinClusterInfluenceString.c_str());
+								MGlobal::displayInfo("Failed to map skin cluster influence (" + skinClusterInfNameString + ") to armature joint.");
+							}
+
+							
+						}
+
+						fNumWeightsPerVertexArray.append(numWeightsPerVert);
+						fprintf(file, "\n");
+
+					}
+
+
+
+
+
+					/*
+					int tmpInfIndices[256];
+					float tmpWeights[256];
+
+					for ( ; !gIter.isDone(); gIter.next()) {
+					MObject comp = gIter.currentItem();// component(&stat);
+					CheckError(stat, "Error getting component.");
+
+					// Get the weights for this vertex (one per influence object)
+					//
+					MDoubleArray wts;
+					MIntArray	 vinfIndices;
+					unsigned int infCount;
+
+					MDagPath gIterPath;
+					fSkinCluster->getPathAtIndex(gIter.index(), gIterPath);
+					stat = fSkinCluster->getWeights(gIterPath, comp, wts, infCount);
+					//stat = fSkinCluster->getWeights(skinPath, comp, vinfIndices, wts);
+					infCount = vinfIndices.length();
+					CheckError(stat, "Error getting vertex weights.");
+					if (0 == infCount) {
+					stat = MS::kFailure;
+					CheckError(stat, "Error: 0 influence objects.");
+					}
+
+					//vinfIndices.get(&(tmpInfIndices[0]));
+					wts.get(&(tmpWeights[0]));
+
+					// Output the weight data for this vertex
+					//
+
+					fprintf(file, "vertex[%d] weights(%d) =  ", gIter.index(), infCount);
+					for (unsigned int jj = 0; jj < infCount; ++jj) {
+					fprintf(file, "%g, ", tmpWeights[jj]);// , tmpInfIndices[jj]);
+					}
+					fprintf(file, "\n");
+					}
+					*/
+				}
+
+			}
+			//else
+			//	delete skinClusterFn;
+
+			//continue;
+		}
+	}
+
+	fclose(file);
+
+}
 
 MStatus polyAbcWriter::writeToFile(ostream& os)
 {
@@ -132,6 +517,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	Alembic::AbcGeom::OPolyMesh meshObj(xformObj, fMesh->partialPathName().asUTF8());
 	Alembic::AbcGeom::OPolyMeshSchema &meshSchema = meshObj.getSchema();
 
+	//xformObj.addChildInstance()
 	//we will need to prepare the following for a call to AbcGeom::OPolyMeshSchema::Sample
 	//(i.e. to write the minimum spec geometry cache information)
 	// 1)  floating point interleaved vertex array + size of array
@@ -144,6 +530,12 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 
 	//1)  Populate mesh interleaved floating point X,Y,Z vertex array
 	unsigned int vertexCount = fVertexArray.length();
+
+	char buf[256];
+	_itoa_s(vertexCount, buf, 10);
+	MString intStr = MString(buf);
+
+	MGlobal::displayInfo("fVertexArray.length = " + intStr);
 	float * floatVerts = (float*)alloca(sizeof(float) * 3 * vertexCount);
 	if (0 == vertexCount) {
 		return MStatus::kFailure;
@@ -481,7 +873,7 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 		Alembic::AbcGeom::OFaceSetSchema hypershadeMatFaceSetSchema = hypershadeMatFaceSet.getSchema();
 		Alembic::AbcGeom::OFaceSetSchema::Sample fSetSamp(Alembic::Abc::Int32ArraySample(&(faces[0]), faces.size()));
 		hypershadeMatFaceSetSchema.set(fSetSamp);
-		hypershadeMatFaceSetSchema.setFaceExclusivity( Alembic::AbcGeom::kFaceSetExclusive ); //until we figure out how to do proprietary pbr material mixing, we will mandate face set exclusivity
+		hypershadeMatFaceSetSchema.setFaceExclusivity( Alembic::AbcGeom::kFaceSetNonExclusive); //until we figure out how to do proprietary pbr material mixing, we will mandate face set exclusivity
 
 		//We will store per mtl mesh face groupings as an ArbGeomParam,
 		//While we will define arbitrary face set partitions groupings using AbcGeom OFaceSet
@@ -939,6 +1331,36 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	Alembic::Abc::UInt32ArraySample mtlKeyOffsetsSamp = Alembic::Abc::UInt32ArraySample(mtlKeyOffsets, mtlKeys.size());
 	mtlKeyOffsetSampleProperty.set(mtlKeyOffsetsSamp);
 
+
+	//Create a compound child property named
+	Alembic::Abc::OCompoundProperty arbGeomSkinProperty = Alembic::Abc::OCompoundProperty(arbGeomParamProperty, ".arbGeomSkin", meshSchema.getMetaData(), NULL);
+	//create a arbGeomMaterials .vals sub-property to store Material Group Keys
+	Alembic::Abc::OInt32ArrayProperty vertexSkinWeightCountsProperty = Alembic::Abc::OInt32ArrayProperty(arbGeomSkinProperty, ".weightCount", meshSchema.getMetaData(), NULL);
+	Alembic::Abc::OInt32ArrayProperty vertexSkinInfluenceIndicesProperty = Alembic::Abc::OInt32ArrayProperty(arbGeomSkinProperty, ".influences", meshSchema.getMetaData(), NULL);
+	Alembic::Abc::OFloatArrayProperty  vertexSkinWeightsProperty = Alembic::Abc::OFloatArrayProperty(arbGeomSkinProperty,  ".weights", meshSchema.getMetaData(), NULL);
+
+	//populate c style arrays from Maya API arrays to pass to populate alembic object nodes
+	int * intWeightCounts = (int*)alloca(sizeof(int) * fNumWeightsPerVertexArray.length() );
+	int * intWeightInfluenceIndices = (int*)alloca(sizeof(int) * fVertexWeightsInfluenceArray.length());
+	float * floatWeights = (float*)alloca(sizeof(float) * fVertexWeightsArray.length());
+
+	fNumWeightsPerVertexArray.get(intWeightCounts);
+	fVertexWeightsInfluenceArray.get(intWeightInfluenceIndices);
+	fVertexWeightsArray.get(floatWeights);
+	//for (unsigned vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) { floatVerts[vertexIndex] = (float)fVertexWeightsArray[vertexIndex]; }
+
+	//prepare samples to add to the skinning data to the arbGeomParams Compound Property
+	Alembic::Abc::Int32ArraySample vertexSkinWeightCountsSamp = Alembic::Abc::Int32ArraySample(intWeightCounts, fNumWeightsPerVertexArray.length());
+	vertexSkinWeightCountsProperty.set(vertexSkinWeightCountsSamp);
+
+	Alembic::Abc::Int32ArraySample vertexSkinWeightInfluencesSamp = Alembic::Abc::Int32ArraySample(intWeightInfluenceIndices, fVertexWeightsInfluenceArray.length());
+	vertexSkinInfluenceIndicesProperty.set(vertexSkinWeightInfluencesSamp);
+
+	Alembic::Abc::FloatArraySample vertexSkinWeightsSamp = Alembic::Abc::FloatArraySample(floatWeights, fVertexWeightsArray.length());
+	vertexSkinWeightsProperty.set(vertexSkinWeightsSamp);
+
+
+
 	//mAgeProperty = Abc::OFloatArrayProperty(arbGeomParam, ".age",
 	//	mSchema.getMetaData(), animTS);
 	//mMassProperty = Abc::OFloatArrayProperty(arbGeomParam, ".mass",
@@ -953,6 +1375,16 @@ MStatus polyAbcWriter::writeGeometryToArchive(Alembic::AbcGeom::OXform &xformObj
 	//cbox.extendBy(Alembic::Abc::V3d(1.0, -1.0, 0.0));
 	//cbox.extendBy(Alembic::Abc::V3d(-1.0, 1.0, 3.0));
 	//meshSchema.getChildBoundsProperty().set(cbox);
+
+
+	//Find the Armature joint hierarchy associated with the geometry
+	//(Ie the joints we want to map to for rendering)
+
+	//Find the influences provided 
+
+	//Set the Vertex Number of influences per vertex
+
+	//Set the Vertex Influence Weights
 
 	//TO DO:  set the vertex tuple info
 	/*

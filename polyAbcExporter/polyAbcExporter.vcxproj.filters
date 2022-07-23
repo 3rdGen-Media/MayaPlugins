@@ -5,6 +5,7 @@
     <ClCompile Include="polyWriter.cpp" />
     <ClCompile Include="polyAbcExporter.cpp" />
     <ClCompile Include="polyAbcWriter.cpp" />
+    <ClCompile Include="OArmatureCollection.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="polyExporter.h" />
@@ -12,5 +13,6 @@
     <ClInclude Include="polyAbcExporter.h" />
     <ClInclude Include="polyAbcWriter.h" />
     <ClInclude Include="AbcExportInterface.h" />
+    <ClInclude Include="OArmatureCollection.h" />
   </ItemGroup>
 </Project>

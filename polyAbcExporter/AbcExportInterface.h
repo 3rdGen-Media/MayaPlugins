@@ -6,6 +6,9 @@
 #include <Alembic/AbcGeom/All.h>
 #include <Alembic/AbcMaterial/All.h>
 
+//Alembic Extensions
+#include  "OArmatureCollection.h"
+
 
 //Abc Preview Material Definitions
 static const char * kAlembicAlbedoTexture =				"baseColorMap";

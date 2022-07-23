@@ -90,10 +90,11 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(MAYA_PATH)\include;$(ILMBASE_PATH)\include\OpenEXR;$(ALEMBIC_PATH)\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WINDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(MAYA_PATH)\lib;$(ILMBASE_PATH)\lib;$(ALEMBIC_PATH)\lib;C:\Program Files (x86)\Visual Leak Detector\lib\Win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>OpenMaya.lib;Foundation.lib;Imath-2_2.lib;Half.lib;Iex-2_2.lib;Alembic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>OpenMaya.lib;OpenMayaAnim.lib;Foundation.lib;Imath-2_2.lib;Half.lib;Iex-2_2.lib;Alembic.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -117,12 +118,13 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(MAYA_PATH)\include;$(ILMBASE_PATH)\include\OpenEXR;$(ALEMBIC_PATH)\include</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_WINDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>$(MAYA_PATH)\lib;$(ILMBASE_PATH)\lib;$(ALEMBIC_PATH)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>OpenMaya.lib;Foundation.lib;Imath-2_2.lib;Half.lib;Iex-2_2.lib;Alembic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>OpenMaya.lib;OpenMayaAnim.lib;Foundation.lib;Imath-2_2.lib;Half.lib;Iex-2_2.lib;Alembic.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -130,8 +132,10 @@
     <ClCompile Include="polyAbcExporter.cpp" />
     <ClCompile Include="polyAbcWriter.cpp" />
     <ClCompile Include="polyWriter.cpp" />
+    <ClCompile Include="OArmatureCollection.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="OArmatureCollection.h" />
     <ClInclude Include="polyExporter.h" />
     <ClInclude Include="polyAbcExporter.h" />
     <ClInclude Include="polyAbcWriter.h" />
